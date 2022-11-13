@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+sentry-nomad
 
 # Test binary, built with `go test -c`
 *.test
