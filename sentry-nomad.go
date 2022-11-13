@@ -8,6 +8,14 @@ import (
 	"github.com/getsentry/sentry-go"
 )
 
+func BeforeSend(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
+	// Update SDK info
+	event.Sdk.Name = "sentry.nomad"
+	event.Sdk.Version = "FIXME"
+
+	return event
+}
+
 func testSDK() {
 	// Using SENTRY_DSN here
 	err := sentry.Init(sentry.ClientOptions{
@@ -15,6 +23,7 @@ func testSDK() {
 		// Useful when getting started or trying to figure something out.
 		Debug:            true,
 		TracesSampleRate: 0.0,
+		BeforeSend:       BeforeSend,
 	})
 	if err != nil {
 		log.Fatalf("sentry.Init: %s", err)
@@ -23,6 +32,7 @@ func testSDK() {
 	// Set the timeout to the maximum duration the program can afford to wait.
 	defer sentry.Flush(2 * time.Second)
 
+	// Test
 	sentry.CaptureMessage("It works!")
 }
 
