@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"time"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/hashicorp/nomad/api"
@@ -20,7 +19,7 @@ func BeforeSend(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
 	return event
 }
 
-func testSDK() {
+func initSentrySDK() {
 	// Using SENTRY_DSN here
 	err := sentry.Init(sentry.ClientOptions{
 		// Enable printing of SDK debug messages.
@@ -32,12 +31,27 @@ func testSDK() {
 	if err != nil {
 		log.Fatalf("sentry.Init: %s", err)
 	}
-	// Flush buffered events before the program terminates.
-	// Set the timeout to the maximum duration the program can afford to wait.
-	defer sentry.Flush(2 * time.Second)
+}
 
-	// Test
-	sentry.CaptureMessage("It works!")
+func handleTaskState(taskState *api.TaskState) {
+	fmt.Printf("  >> TaskState %+v\n", taskState)
+
+	if taskState.Failed {
+		for _, taskEvent := range taskState.Events {
+			handleTaskEvent(taskEvent)
+		}
+	}
+}
+
+func handleTaskEvent(taskEvent *api.TaskEvent) {
+	fmt.Printf("    >> TaskEvent %+v\n", taskEvent)
+
+	// TODO: are event types, hum, types?
+	if taskEvent.Type == "Driver Failure" {
+		// Report!
+		sentryEvent := sentry.Event{Message: taskEvent.DisplayMessage, Level: sentry.LevelError}
+		sentry.CaptureEvent(&sentryEvent)
+	}
 }
 
 func readNomadStream() {
@@ -51,7 +65,7 @@ func readNomadStream() {
 	eventCh, err := events.Stream(ctx, make(map[api.Topic][]string), startingIndex, &api.QueryOptions{})
 
 	if err != nil {
-		// s.L.Error("error creating event stream client", "error", err)
+		fmt.Printf("Error creating event stream client: %+v err", err)
 		os.Exit(1)
 	}
 
@@ -61,15 +75,32 @@ func readNomadStream() {
 			return
 		case event := <-eventCh:
 			if event.Err != nil {
-				// s.L.Warn("error from event stream", "error", err)
-				break
+				fmt.Printf("Error from event stream: %+v\n", event)
+				// FIXME: add back-off and/or retry
+				return
 			}
 			if event.IsHeartbeat() {
 				continue
 			}
 
 			for _, e := range event.Events {
-				fmt.Printf("%+v", e)
+				// eventIndex := e.Index
+				topic := e.Topic
+
+				if topic == api.TopicAllocation {
+					alloc, _ := e.Allocation()
+					fmt.Printf("Allocation: %+v\n", alloc)
+
+					taskStates := alloc.TaskStates
+
+					for _, taskState := range taskStates {
+						handleTaskState(taskState)
+					}
+
+				} else {
+					fmt.Printf("-- Skipping event from topic %s\n", topic)
+					continue
+				}
 			}
 		}
 	}
@@ -77,7 +108,7 @@ func readNomadStream() {
 }
 
 func main() {
-	// testSDK()
+	initSentrySDK()
 	readNomadStream()
 	fmt.Println("Done.")
 }

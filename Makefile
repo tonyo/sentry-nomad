@@ -21,3 +21,8 @@ clean:
 nomad-run:
 	sudo nomad agent -dev -bind 127.0.0.1 -log-level INFO
 .PHONY: nomad-run
+
+lint:
+	go vet
+	go fmt
+.PHONY: lint
