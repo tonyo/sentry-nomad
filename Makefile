@@ -23,6 +23,7 @@ nomad-run:
 .PHONY: nomad-run
 
 lint:
+	go mod tidy
 	go vet
 	go fmt
 .PHONY: lint

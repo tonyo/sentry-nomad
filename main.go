@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"math"
 	"os"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/hashicorp/nomad/api"
+	log "github.com/sirupsen/logrus"
 )
 
 func BeforeSend(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
@@ -37,7 +36,7 @@ func initSentrySDK() {
 }
 
 func handleTaskState(taskState *api.TaskState) {
-	fmt.Printf("  >> TaskState %+v\n", taskState)
+	log.Debugf("  >> TaskState %+v\n", taskState)
 
 	if taskState.Failed {
 		for _, taskEvent := range taskState.Events {
@@ -47,7 +46,7 @@ func handleTaskState(taskState *api.TaskState) {
 }
 
 func handleTaskEvent(taskEvent *api.TaskEvent) {
-	fmt.Printf("    >> TaskEvent %+v\n", taskEvent)
+	log.Debugf("    >> TaskEvent %+v\n", taskEvent)
 
 	// TODO: are event types, hum, types?
 	if taskEvent.Type == "Driver Failure" {
@@ -69,19 +68,20 @@ func readNomadStream() {
 	eventCh, err := events.Stream(ctx, make(map[api.Topic][]string), startingIndexMax, &api.QueryOptions{})
 
 	if err != nil {
-		fmt.Printf("Error creating event stream client: %+v err", err)
+		log.Errorf("Error creating event stream client: %+v err", err)
 		os.Exit(1)
 	}
 
 	firstEventProcessed := false
 
+	log.Infof("Reading from Nomad event stream...")
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case event := <-eventCh:
 			if event.Err != nil {
-				fmt.Printf("Error from event stream: %+v\n", event)
+				log.Errorf("Error from event stream: %+v\n", event)
 				// FIXME: add back-off and/or retry
 				return
 			}
@@ -97,7 +97,7 @@ func readNomadStream() {
 				if !firstEventProcessed {
 					firstEventProcessed = true
 					if eventIndex >= startingIndexMax {
-						fmt.Printf("Event index is too big: %d; exiting.", eventIndex)
+						log.Errorf("Event index is too big: %d; exiting.", eventIndex)
 						os.Exit(1)
 					} else {
 						continue
@@ -107,7 +107,7 @@ func readNomadStream() {
 				topic := e.Topic
 				if topic == api.TopicAllocation {
 					alloc, _ := e.Allocation()
-					fmt.Printf("Allocation: %+v\n", alloc)
+					log.Debugf("Allocation: %+v\n", alloc)
 
 					taskStates := alloc.TaskStates
 
@@ -116,7 +116,7 @@ func readNomadStream() {
 					}
 
 				} else {
-					fmt.Printf("-- Skipping event from topic %s\n", topic)
+					log.Infof("Skipping event from topic %s\n", topic)
 					continue
 				}
 			}
@@ -128,5 +128,5 @@ func readNomadStream() {
 func main() {
 	initSentrySDK()
 	readNomadStream()
-	fmt.Println("Done.")
+	log.Info("Done.")
 }
