@@ -16,6 +16,9 @@ func BeforeSend(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
 	event.Sdk.Name = "sentry.nomad"
 	event.Sdk.Version = "FIXME"
 
+	// Clear modules/packages
+	event.Modules = map[string]string{}
+
 	return event
 }
 
@@ -50,6 +53,7 @@ func handleTaskEvent(taskEvent *api.TaskEvent) {
 	if taskEvent.Type == "Driver Failure" {
 		// Report!
 		sentryEvent := sentry.Event{Message: taskEvent.DisplayMessage, Level: sentry.LevelError}
+
 		sentry.CaptureEvent(&sentryEvent)
 	}
 }
@@ -61,13 +65,15 @@ func readNomadStream() {
 	ctx := context.Background()
 
 	// Note: max unsigned (MaxUInt64) triggers a strconv.Atoi "value out of range" error
-	const startingIndex = uint64(math.MaxInt64)
-	eventCh, err := events.Stream(ctx, make(map[api.Topic][]string), startingIndex, &api.QueryOptions{})
+	const startingIndexMax = uint64(math.MaxInt64)
+	eventCh, err := events.Stream(ctx, make(map[api.Topic][]string), startingIndexMax, &api.QueryOptions{})
 
 	if err != nil {
 		fmt.Printf("Error creating event stream client: %+v err", err)
 		os.Exit(1)
 	}
+
+	firstEventProcessed := false
 
 	for {
 		select {
@@ -84,9 +90,21 @@ func readNomadStream() {
 			}
 
 			for _, e := range event.Events {
-				// eventIndex := e.Index
-				topic := e.Topic
+				eventIndex := e.Index
 
+				// First event returned from the stream is always an older event, and we want to
+				// ignore it.
+				if !firstEventProcessed {
+					firstEventProcessed = true
+					if eventIndex >= startingIndexMax {
+						fmt.Printf("Event index is too big: %d; exiting.", eventIndex)
+						os.Exit(1)
+					} else {
+						continue
+					}
+				}
+
+				topic := e.Topic
 				if topic == api.TopicAllocation {
 					alloc, _ := e.Allocation()
 					fmt.Printf("Allocation: %+v\n", alloc)
