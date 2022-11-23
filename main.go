@@ -49,11 +49,42 @@ func handleTaskEvent(taskEvent *api.TaskEvent) {
 	log.Debugf("    >> TaskEvent %+v\n", taskEvent)
 
 	// TODO: are event types, hum, types?
-	if taskEvent.Type == "Driver Failure" {
+	if taskEvent.Type == api.TaskDriverFailure {
 		// Report!
 		sentryEvent := sentry.Event{Message: taskEvent.DisplayMessage, Level: sentry.LevelError}
 
-		sentry.CaptureEvent(&sentryEvent)
+		sentry.WithScope(func(scope *sentry.Scope) {
+			scope.SetTag("eventType", taskEvent.Type)
+			sentry.CaptureEvent(&sentryEvent)
+		})
+	}
+}
+
+func handleEvent(event *api.Event) {
+	topic := event.Topic
+	if topic == api.TopicAllocation {
+		alloc, _ := event.Allocation()
+		log.Debugf("Allocation: %+v\n", alloc)
+
+		taskStates := alloc.TaskStates
+
+		for _, taskState := range taskStates {
+			sentry.WithScope(func(scope *sentry.Scope) {
+				// TODO: use SetTags
+				scope.SetTag("allocationId", alloc.ID)
+				scope.SetTag("allocationName", alloc.Name)
+				scope.SetTag("jobId", alloc.JobID)
+				scope.SetTag("namespace", alloc.Namespace)
+				scope.SetTag("nodeName", alloc.NodeName)
+				scope.SetTag("nodeId", alloc.NodeID)
+				scope.SetTag("taskGroup", alloc.TaskGroup)
+				handleTaskState(taskState)
+			})
+		}
+
+	} else {
+		log.Infof("Skipping event from topic %s\n", topic)
+		return
 	}
 }
 
@@ -97,28 +128,13 @@ func readNomadStream() {
 				if !firstEventProcessed {
 					firstEventProcessed = true
 					if eventIndex >= startingIndexMax {
-						log.Errorf("Event index is too big: %d; exiting.", eventIndex)
+						log.Errorf("Event index is too big: %d; exiting.\n", eventIndex)
 						os.Exit(1)
 					} else {
 						continue
 					}
 				}
-
-				topic := e.Topic
-				if topic == api.TopicAllocation {
-					alloc, _ := e.Allocation()
-					log.Debugf("Allocation: %+v\n", alloc)
-
-					taskStates := alloc.TaskStates
-
-					for _, taskState := range taskStates {
-						handleTaskState(taskState)
-					}
-
-				} else {
-					log.Infof("Skipping event from topic %s\n", topic)
-					continue
-				}
+				handleEvent(&e)
 			}
 		}
 	}
