@@ -64,6 +64,7 @@ func handleEvent(event *api.Event) {
 	topic := event.Topic
 	if topic == api.TopicAllocation {
 		alloc, _ := event.Allocation()
+		event.Deployment()
 		log.Debugf("Allocation: %+v\n", alloc)
 
 		taskStates := alloc.TaskStates
@@ -74,6 +75,8 @@ func handleEvent(event *api.Event) {
 				scope.SetTag("allocationId", alloc.ID)
 				scope.SetTag("allocationName", alloc.Name)
 				scope.SetTag("jobId", alloc.JobID)
+				scope.SetTag("jobRegion", *alloc.Job.Region)
+				scope.SetTag("jobType", *alloc.Job.Type)
 				scope.SetTag("namespace", alloc.Namespace)
 				scope.SetTag("nodeName", alloc.NodeName)
 				scope.SetTag("nodeId", alloc.NodeID)
