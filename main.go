@@ -75,8 +75,6 @@ func handleEvent(event *api.Event) {
 				scope.SetTag("allocationId", alloc.ID)
 				scope.SetTag("allocationName", alloc.Name)
 				scope.SetTag("jobId", alloc.JobID)
-				scope.SetTag("jobRegion", *alloc.Job.Region)
-				scope.SetTag("jobType", *alloc.Job.Type)
 				scope.SetTag("namespace", alloc.Namespace)
 				scope.SetTag("nodeName", alloc.NodeName)
 				scope.SetTag("nodeId", alloc.NodeID)
@@ -124,14 +122,12 @@ func readNomadStream() {
 			}
 
 			for _, e := range event.Events {
-				eventIndex := e.Index
-
 				// First event returned from the stream is always an older event, and we want to
 				// ignore it.
 				if !firstEventProcessed {
 					firstEventProcessed = true
-					if eventIndex >= startingIndexMax {
-						log.Errorf("Event index is too big: %d; exiting.\n", eventIndex)
+					if e.Index >= startingIndexMax {
+						log.Errorf("Event index is too big: %d; exiting.\n", e.Index)
 						os.Exit(1)
 					} else {
 						continue
